@@ -380,12 +380,12 @@ else:
                     st.markdown('<div class="section-header title-banner">Technical Abstract</div>', unsafe_allow_html=True)
                     st.markdown(f"<div class='abstract-container'>{row['Abstract in English']}</div>", unsafe_allow_html=True)
     
-    # --- 6. MODE: STRATEGIC ANALYSIS ENGINE ---
+  # --- 6. MODE: STRATEGIC ANALYSIS ENGINE ---
     elif app_mode == "Strategic Analysis":
         if df_main is not None and not df_main.empty:
             st.markdown('<div class="metric-badge">STRATEGIC LANDSCAPE ENGINE</div>', unsafe_allow_html=True)
             # UPDATED TAB LIST: Added "Applicant Intelligence" and "Firm's Client Lists"
-            tabs = st.tabs(["Application Growth(By Filing Date)", "Application Growth(By Earliest Priority Date)", "Firm Intelligence", "Applicant Intelligence", "Firm's Client Lists", "Firm Tech-Strengths", "STRATEGIC MAP", "IPC Classification", "Moving Averages", "Monthly Filing", "IPC Growth Histogram"])
+            tabs = st.tabs(["Application Growth(By Filing Date)", "Application Growth(By Earliest Priority Date)", "Firm Intelligence", "Applicant Intelligence", "Firm's Client Lists", "Firm Tech-Strengths", "STRATEGIC MAP", "IPC Classification", "Moving Averages", "Monthly Filing", "Growth of Applicants", "IPC Growth Histogram"])
             
             # --- TAB 1: ORIGINAL APPLICATION GROWTH (Filing Date) ---
             with tabs[0]:
