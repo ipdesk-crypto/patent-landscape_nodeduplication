@@ -961,7 +961,96 @@ else:
                     # Kept completely intact
                     st.plotly_chart(fix_chart(fig), use_container_width=True)
 
+                # --- TAB 10: GROWTH OF APPLICANTS ---
             with tabs[10]:
+                st.markdown("### GROWTH OF APPLICANTS")
+                
+                # Base copy and date preparation (from Tab 9)
+                df_tab10 = df_f.copy()
+                df_tab10['Earliest Priority Date'] = pd.to_datetime(df_tab10['Earliest Priority Date'], errors='coerce')
+                df_tab10['Year'] = df_tab10['Earliest Priority Date'].dt.year
+                df_tab10['Month_Name'] = df_tab10['Earliest Priority Date'].dt.month_name()
+                df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
+                
+                # Clean and Standardize Applicant Names (Case-Insensitive)
+                df_tab10['Standardized Applicant'] = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.strip().str.upper()
+                all_apps_clean = sorted(df_tab10['Standardized Applicant'].unique())
+                
+                # REPORT BOX TOP
+                c18, c30 = get_cutoff_dates()
+                st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
+                            Type 4 & 5 Cutoff: <b>{c18.strftime('%d %B %Y')}</b> | Type 1 Cutoff: <b>{c30.strftime('%d %B %Y')}</b></div>""", unsafe_allow_html=True)
+                
+                available_years_10 = sorted(df_tab10['Year'].dropna().unique(), reverse=True)
+                
+                # UI Controls: Single Applicant Select + Multi Year Select
+                c1_10, c2_10 = st.columns([1,1])
+                with c1_10:
+                    # Selectbox restricts choice to strictly ONE applicant at a time
+                    selected_app = st.selectbox("Select One Applicant:", all_apps_clean, key="tab10_app_selector")
+                    
+                with c2_10:
+                    # Multiselect allowing multiple years, defaulting to the most recent year
+                    default_yr_10 = [available_years_10[0]] if available_years_10 else []
+                    sel_yr_10 = st.multiselect("Choose Year(s):", available_years_10, default=default_yr_10, key="tab10_yr_selector")
+    
+                if selected_app and sel_yr_10:
+                    # Filter strictly by the selected applicant and chosen year(s)
+                    filtered_tab10 = df_tab10[(df_tab10['Standardized Applicant'] == selected_app) & (df_tab10['Year'].isin(sel_yr_10))]
+                    
+                    # --- DE-DUPLICATION ADDED HERE ---
+                    # Ensure each application is counted only once based on 'Application Number'
+                    filtered_tab10 = filtered_tab10.drop_duplicates(subset=['Application Number'])
+                    
+                    if not filtered_tab10.empty:
+                        # Generate x-axis order dynamically for all selected years to expand columns
+                        base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                        m_order_10 = []
+                        for y in sorted(sel_yr_10): # Sorts ascending so older years are on the left
+                            for m in base_months:
+                                m_order_10.append(f"{m} {int(y)}")
+                        
+                        # Group by Month_Year and Application Type (ID)
+                        counts_10 = filtered_tab10.groupby(['Month_Year', 'Application Type (ID)']).size().reset_index(name='Apps')
+                        counts_10['Application Type (ID)'] = counts_10['Application Type (ID)'].astype(str)
+                        
+                        # Rebuild chart with stacking, counting, and proper ordering
+                        fig_10 = px.bar(
+                            counts_10, 
+                            x='Month_Year', 
+                            y='Apps', 
+                            color='Application Type (ID)', # Interactive legend per application type
+                            text='Apps',                   # Count inside block
+                            height=600,
+                            title=f"Monthly Application Growth: {selected_app}",
+                            category_orders={
+                                "Month_Year": m_order_10,
+                                "Application Type (ID)": ["5", "4", "3", "2", "1"] # Renders 5 at the bottom, building upwards
+                            }
+                        )
+                        
+                        # Enforce the stack look and position the internal text safely
+                        fig_10.update_traces(textposition='inside')
+                        fig_10.update_layout(barmode='stack')
+                        
+                        # Extract the Month Year from the present dynamic cutoff dates
+                        c18_month_year = c18.strftime('%B %Y')
+                        c30_month_year = c30.strftime('%B %Y')
+                        
+                        # Add vertical cutoff lines based on the calculated current Month Year
+                        fig_10.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
+                        fig_10.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
+                        
+                        # Add dummy traces so the vertical lines register appropriately in the side legend
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
+                        
+                        # Render Chart
+                        st.plotly_chart(fix_chart(fig_10), use_container_width=True)
+                    else:
+                        st.warning("No data found for the selected Applicant and Year(s).")
+
+            with tabs[11]:
                 st.markdown("### IPC Growth Histogram (Filing Date)")
                 u_ipc_list = sorted(df_exp_f['IPC_Class3'].unique())
                 a_yrs_hist = sorted(df_exp_f['Year'].unique())
