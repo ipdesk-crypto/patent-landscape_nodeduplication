@@ -973,13 +973,16 @@ else:
                 df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
                 
                 # --- AGGRESSIVE APPLICANT CLEANING TO GROUP SAME COMPANIES ---
-                # 1. Uppercase & strip everything
+                # 1. Uppercase everything so letters match exactly
                 cleaned_names = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
-                # 2. Remove ALL punctuation (periods, commas, hyphens, slashes, etc.)
+                
+                # 2. Remove ALL punctuation (periods, commas, hyphens, slashes, etc.) so "COMPANY." matches "COMPANY"
                 cleaned_names = cleaned_names.str.replace(r'[^\w\s]', '', regex=True)
-                # 3. Remove common corporate suffixes to leave only the core name
+                
+                # 3. Remove common corporate suffixes so "COMPANY INC" matches "COMPANY"
                 cleaned_names = cleaned_names.str.replace(r'\b(INC|LLC|LTD|CORP|CORPORATION|CO|COMPANY|LIMITED|GMBH|SA|NV|PLC)\b', '', regex=True)
-                # 4. Collapse extra spaces into a single space and trim the edges
+                
+                # 4. Remove ALL extra spaces, collapsing them to a single space, and trim edges so "COM  PANY" and "COMPANY " are handled perfectly
                 df_tab10['Cleaned Applicant'] = cleaned_names.str.replace(r'\s+', ' ', regex=True).str.strip()
                 
                 # Create dropdown list from the grouped/cleaned names (removing empty strings)
@@ -1061,7 +1064,7 @@ else:
                         st.plotly_chart(fix_chart(fig_10), use_container_width=True)
                     else:
                         st.warning("No data found for the selected Applicant and Year(s).")
-
+                    
             with tabs[11]:
                 st.markdown("### IPC Growth Histogram (Filing Date)")
                 u_ipc_list = sorted(df_exp_f['IPC_Class3'].unique())
