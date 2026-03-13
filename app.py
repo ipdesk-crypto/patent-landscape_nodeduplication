@@ -912,8 +912,17 @@ else:
                     default_yr = [available_years[0]] if available_years else []
                     sel_yr_m = st.multiselect("Choose Year(s):", available_years, default=default_yr, key="m_tab_sel")
                     
+                    # --- NEW ADDITION: Moving Average Toggle ---
+                    ma_options = ["1", "4", "5"]
+                    sel_ma = st.multiselect("Show 12-Month Moving Average for Application Types:", ma_options, default=[], key="ma_tab_sel")
+                    # -------------------------------------------
+
                     # Filter using isin() to support multiple selected years
                     yr_data = df_tab9[df_tab9['Year'].isin(sel_yr_m)]
+                    
+                    # --- DE-DUPLICATION ADDED HERE ---
+                    # Ensure each application is counted only once based on 'Application Number'
+                    yr_data = yr_data.drop_duplicates(subset=['Application Number'])
                     
                     # Generate x-axis order dynamically for all selected years to expand columns
                     base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
@@ -958,6 +967,33 @@ else:
                     fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
                     fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
                     
+                    # --- NEW ADDITION: Moving Average Plotting Logic ---
+                    if sel_ma:
+                        # Create a base dataframe of all months in order to ensure smooth continuous lines without timeline gaps
+                        df_months = pd.DataFrame({"Month_Year": m_order})
+                        
+                        for app_type in sel_ma:
+                            # Filter counts for the specific application type chosen in the toggle
+                            type_data = counts[counts['Application Type (ID)'] == app_type]
+                            
+                            # Merge with full timeline to fill any missing months with 0
+                            merged_data = pd.merge(df_months, type_data, on="Month_Year", how="left").fillna({"Apps": 0})
+                            
+                            # Calculate 12-month moving average (totalled and divided by 12)
+                            # min_periods=1 ensures early data isn't hidden while building up to the first full 12 months
+                            merged_data['Moving_Avg'] = merged_data['Apps'].rolling(window=12, min_periods=1).mean()
+                            
+                            # Add the smooth curve to the figure
+                            fig.add_scatter(
+                                x=merged_data['Month_Year'], 
+                                y=merged_data['Moving_Avg'], 
+                                mode='lines', 
+                                line_shape='spline', # Makes it a smooth curve as requested
+                                line=dict(width=4), 
+                                name=f'Type {app_type} Moving Avg (12M)'
+                            )
+                    # ---------------------------------------------------
+
                     # Kept completely intact
                     st.plotly_chart(fix_chart(fig), use_container_width=True)
 
