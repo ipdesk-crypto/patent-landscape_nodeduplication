@@ -380,12 +380,12 @@ else:
                     st.markdown('<div class="section-header title-banner">Technical Abstract</div>', unsafe_allow_html=True)
                     st.markdown(f"<div class='abstract-container'>{row['Abstract in English']}</div>", unsafe_allow_html=True)
     
-    # --- 6. MODE: STRATEGIC ANALYSIS ENGINE ---
+  # --- 6. MODE: STRATEGIC ANALYSIS ENGINE ---
     elif app_mode == "Strategic Analysis":
         if df_main is not None and not df_main.empty:
             st.markdown('<div class="metric-badge">STRATEGIC LANDSCAPE ENGINE</div>', unsafe_allow_html=True)
             # UPDATED TAB LIST: Added "Applicant Intelligence" and "Firm's Client Lists"
-            tabs = st.tabs(["Application Growth(By Filing Date)", "Application Growth(By Earliest Priority Date)", "Firm Intelligence", "Applicant Intelligence", "Firm's Client Lists", "Firm Tech-Strengths", "STRATEGIC MAP", "IPC Classification", "Moving Averages", "Monthly Filing", "IPC Growth Histogram"])
+            tabs = st.tabs(["Application Growth(By Filing Date)", "Application Growth(By Earliest Priority Date)", "Firm Intelligence", "Applicant Intelligence", "Firm's Client Lists", "Firm Tech-Strengths", "STRATEGIC MAP", "IPC Classification", "Moving Averages", "Monthly Filing", "Growth of Applicants", "IPC Growth Histogram"])
             
             # --- TAB 1: ORIGINAL APPLICATION GROWTH (Filing Date) ---
             with tabs[0]:
@@ -891,14 +891,257 @@ else:
                 else: st.warning("Insufficient data.")
 
             with tabs[9]:
-                sel_yr_m = st.selectbox("Choose Year:", sorted(df_f['Year'].unique(), reverse=True), key="m_tab_sel")
-                yr_data = df_f[df_f['Year'] == sel_yr_m]
-                m_order = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-                counts = yr_data.groupby('Month_Name').size().reindex(m_order, fill_value=0).reset_index(name='Apps')
-                fig = px.bar(counts, x='Month_Name', y='Apps', text='Apps', height=600)
-                st.plotly_chart(fix_chart(fig), use_container_width=True)
+                    # 1. Base counting on 'Earliest Priority Date' without permanently altering other tabs
+                    df_tab9 = df_f.copy()
+                    df_tab9['Earliest Priority Date'] = pd.to_datetime(df_tab9['Earliest Priority Date'], errors='coerce')
+                    df_tab9['Year'] = df_tab9['Earliest Priority Date'].dt.year
+                    df_tab9['Month_Name'] = df_tab9['Earliest Priority Date'].dt.month_name()
+                    df_tab9['Month_Year'] = df_tab9['Earliest Priority Date'].dt.strftime('%B %Y') # Added to keep years distinct on x-axis
+                    
+                    # REPORT BOX TOP
+                    c18, c30 = get_cutoff_dates()
+                    st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
+                                Type 4 & 5 Cutoff: <b>{c18.strftime('%d %B %Y')}</b> | Type 1 Cutoff: <b>{c30.strftime('%d %B %Y')}</b></div>""", unsafe_allow_html=True)
+                    
+                    df_firms_only = df_f[df_f['Firm'] != "DIRECT FILING"]
+                    all_firms = sorted(df_firms_only['Firm'].unique())
+                    top_firms_list = df_firms_only['Firm'].value_counts().nlargest(10).index.tolist()
+                    available_years = sorted(df_tab9['Year'].dropna().unique(), reverse=True)
+                    
+                    # Multiselect allowing multiple years, defaulting to the most recent year
+                    default_yr = [available_years[0]] if available_years else []
+                    sel_yr_m = st.multiselect("Choose Year(s):", available_years, default=default_yr, key="m_tab_sel")
+                    
+                    # --- NEW ADDITION: Moving Average UI & Toggle ---
+                    st.markdown("<br><h5 style='color:#3B82F6;'>📈 Moving Average View</h5>", unsafe_allow_html=True)
+                    show_ma = st.toggle("Turn ON Moving Average (Hides Histogram)", key="ma_toggle")
+                    
+                    if show_ma:
+                        # Options directly below the toggle to select specific types to combine
+                        ma_options = ["1", "4", "5"]
+                        sel_ma = st.multiselect("Select Application Types to Add Together:", ma_options, default=["1", "4", "5"], key="ma_tab_sel")
+                    # ------------------------------------------------
 
+                    # Filter using isin() to support multiple selected years
+                    yr_data = df_tab9[df_tab9['Year'].isin(sel_yr_m)]
+                    
+                    # --- DE-DUPLICATION ADDED HERE ---
+                    # Ensure each application is counted only once based on 'Application Number'
+                    yr_data = yr_data.drop_duplicates(subset=['Application Number'])
+                    
+                    # Generate x-axis order dynamically for all selected years to expand columns
+                    base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                    m_order = []
+                    for y in sorted(sel_yr_m): # Sorts ascending so older years are on the left
+                        for m in base_months:
+                            m_order.append(f"{m} {int(y)}")
+                    
+                    # 2. Group by Month_Year and Application Type (ID)
+                    counts = yr_data.groupby(['Month_Year', 'Application Type (ID)']).size().reset_index(name='Apps')
+                    
+                    # Convert ID to string so Plotly creates distinct colors and a toggleable legend
+                    counts['Application Type (ID)'] = counts['Application Type (ID)'].astype(str)
+                    
+                    
+                    # --- CONDITIONAL RENDERING ---
+                    if not show_ma:
+                        # Rebuild chart with stacking, counting, and proper ordering (ORIGINAL CODE)
+                        fig = px.bar(
+                            counts, 
+                            x='Month_Year', 
+                            y='Apps', 
+                            color='Application Type (ID)', # Gives each type a different color and interactive legend
+                            text='Apps',                   # Puts the count inside each individual block
+                            height=600,
+                            category_orders={
+                                "Month_Year": m_order,
+                                "Application Type (ID)": ["5", "4", "3", "2", "1"] # Renders 5 at the bottom, building upwards
+                            }
+                        )
+                        
+                        # Enforce the stack look and position the internal text safely
+                        fig.update_traces(textposition='inside')
+                        fig.update_layout(barmode='stack')
+                        
+                        # Extract the Month Year from the present dynamic cutoff dates
+                        c18_month_year = c18.strftime('%B %Y')
+                        c30_month_year = c30.strftime('%B %Y')
+                        
+                        # Add vertical cutoff lines based on the calculated current Month Year
+                        fig.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
+                        fig.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
+                        
+                        # Add dummy traces so the vertical lines register appropriately in the side legend
+                        fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
+                        fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
+                    
+                    else:
+                        # --- NEW ADDITION: Moving Average Plotting Logic ---
+                        # Create a base dataframe of all months in order to ensure smooth continuous lines without timeline gaps
+                        df_months = pd.DataFrame({"Month_Year": m_order})
+                        
+                        if sel_ma:
+                            # Filter counts for the specific application types chosen
+                            type_data = counts[counts['Application Type (ID)'].isin(sel_ma)]
+                            
+                            # CORRECT COMPUTATION: Sum the apps for the chosen types per month FIRST
+                            combined_data = type_data.groupby('Month_Year')['Apps'].sum().reset_index()
+                        else:
+                            combined_data = pd.DataFrame(columns=['Month_Year', 'Apps'])
+                        
+                        # Merge with full timeline to fill any missing months with 0
+                        merged_data = pd.merge(df_months, combined_data, on="Month_Year", how="left").fillna({"Apps": 0})
+                        
+                        # Calculate 12-month moving average (totalled and divided by 12)
+                        merged_data['Moving_Avg'] = merged_data['Apps'].rolling(window=12, min_periods=1).mean()
+                        
+                        # Build the beautiful smooth curve figure
+                        fig = px.line(
+                            merged_data, 
+                            x='Month_Year', 
+                            y='Moving_Avg', 
+                            height=600,
+                            category_orders={"Month_Year": m_order}
+                        )
+                        
+                        # Make it beautiful with a filled area under the curve
+                        fig.update_traces(
+                            mode='lines', 
+                            line_shape='spline', # Makes it a smooth curve
+                            line=dict(width=5, color='#8B5CF6'), # Beautiful Purple line
+                            fill='tozeroy', # Adds a beautiful shaded area under the curve
+                            fillcolor='rgba(139, 92, 246, 0.2)',
+                            name='12M Moving Average'
+                        )
+                        
+                        fig.update_layout(
+                            title=f"<b>Combined 12-Month Moving Average</b> (Included Types: {', '.join(sel_ma) if sel_ma else 'None'})",
+                            yaxis_title="Average Applications",
+                            xaxis_title="Timeline",
+                            showlegend=True
+                        )
+                        
+                        # Extract the Month Year from the present dynamic cutoff dates (kept intact for MA chart too)
+                        c18_month_year = c18.strftime('%B %Y')
+                        c30_month_year = c30.strftime('%B %Y')
+                        
+                        # Add vertical cutoff lines based on the calculated current Month Year
+                        fig.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
+                        fig.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
+                        
+                        # Add dummy traces so the vertical lines register appropriately in the side legend
+                        fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
+                        fig.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
+                        # ---------------------------------------------------
+
+                    # Kept completely intact
+                    st.plotly_chart(fix_chart(fig), use_container_width=True)
+
+                # --- TAB 10: GROWTH OF APPLICANTS ---
             with tabs[10]:
+                st.markdown("### GROWTH OF APPLICANTS")
+                
+                # Base copy and date preparation (from Tab 9)
+                df_tab10 = df_f.copy()
+                df_tab10['Earliest Priority Date'] = pd.to_datetime(df_tab10['Earliest Priority Date'], errors='coerce')
+                df_tab10['Year'] = df_tab10['Earliest Priority Date'].dt.year
+                df_tab10['Month_Name'] = df_tab10['Earliest Priority Date'].dt.month_name()
+                df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
+                
+                # --- AGGRESSIVE APPLICANT CLEANING TO GROUP SAME COMPANIES ---
+                # 1. Uppercase everything so letters match exactly
+                cleaned_names = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
+                
+                # 2. Remove ALL punctuation (periods, commas, hyphens, slashes, etc.) so "COMPANY." matches "COMPANY"
+                cleaned_names = cleaned_names.str.replace(r'[^\w\s]', '', regex=True)
+                
+                # 3. Remove common corporate suffixes so "COMPANY INC" matches "COMPANY"
+                cleaned_names = cleaned_names.str.replace(r'\b(INC|LLC|LTD|CORP|CORPORATION|CO|COMPANY|LIMITED|GMBH|SA|NV|PLC)\b', '', regex=True)
+                
+                # 4. Remove ALL extra spaces, collapsing them to a single space, and trim edges so "COM  PANY" and "COMPANY " are handled perfectly
+                df_tab10['Cleaned Applicant'] = cleaned_names.str.replace(r'\s+', ' ', regex=True).str.strip()
+                
+                # Create dropdown list from the grouped/cleaned names (removing empty strings)
+                all_apps = sorted(df_tab10[df_tab10['Cleaned Applicant'] != '']['Cleaned Applicant'].unique())
+                
+                # REPORT BOX TOP
+                c18, c30 = get_cutoff_dates()
+                st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
+                            Type 4 & 5 Cutoff: <b>{c18.strftime('%d %B %Y')}</b> | Type 1 Cutoff: <b>{c30.strftime('%d %B %Y')}</b></div>""", unsafe_allow_html=True)
+                
+                available_years_10 = sorted(df_tab10['Year'].dropna().unique(), reverse=True)
+                
+                # UI Controls: Single Applicant Select + Multi Year Select
+                c1_10, c2_10 = st.columns([1,1])
+                with c1_10:
+                    # Selectbox restricts choice to strictly ONE grouped applicant at a time
+                    selected_app = st.selectbox("Select One Applicant:", all_apps, key="tab10_app_selector")
+                    
+                with c2_10:
+                    # Multiselect allowing multiple years, defaulting to the most recent year
+                    default_yr_10 = [available_years_10[0]] if available_years_10 else []
+                    sel_yr_10 = st.multiselect("Choose Year(s):", available_years_10, default=default_yr_10, key="tab10_yr_selector")
+    
+                if selected_app and sel_yr_10:
+                    # Filter strictly using the new merged 'Cleaned Applicant' column and chosen year(s)
+                    app_mask = df_tab10['Cleaned Applicant'] == selected_app
+                    year_mask = df_tab10['Year'].isin(sel_yr_10)
+                    
+                    filtered_tab10 = df_tab10[app_mask & year_mask]
+                    
+                    # --- DE-DUPLICATION ADDED HERE ---
+                    # Ensure each application is counted only once based on 'Application Number'
+                    filtered_tab10 = filtered_tab10.drop_duplicates(subset=['Application Number'])
+                    
+                    if not filtered_tab10.empty:
+                        # Generate x-axis order dynamically for all selected years to expand columns
+                        base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                        m_order_10 = []
+                        for y in sorted(sel_yr_10): # Sorts ascending so older years are on the left
+                            for m in base_months:
+                                m_order_10.append(f"{m} {int(y)}")
+                        
+                        # Group by Month_Year and Application Type (ID)
+                        counts_10 = filtered_tab10.groupby(['Month_Year', 'Application Type (ID)']).size().reset_index(name='Apps')
+                        counts_10['Application Type (ID)'] = counts_10['Application Type (ID)'].astype(str)
+                        
+                        # Rebuild chart with stacking, counting, and proper ordering
+                        fig_10 = px.bar(
+                            counts_10, 
+                            x='Month_Year', 
+                            y='Apps', 
+                            color='Application Type (ID)', # Interactive legend per application type
+                            text='Apps',                   # Count inside block
+                            height=600,
+                            title=f"Monthly Application Growth: {selected_app}",
+                            category_orders={
+                                "Month_Year": m_order_10,
+                                "Application Type (ID)": ["5", "4", "3", "2", "1"] # Renders 5 at the bottom, building upwards
+                            }
+                        )
+                        
+                        # Enforce the stack look and position the internal text safely
+                        fig_10.update_traces(textposition='inside')
+                        fig_10.update_layout(barmode='stack')
+                        
+                        # Extract the Month Year from the present dynamic cutoff dates
+                        c18_month_year = c18.strftime('%B %Y')
+                        c30_month_year = c30.strftime('%B %Y')
+                        
+                        # Add vertical cutoff lines based on the calculated current Month Year
+                        fig_10.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
+                        fig_10.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
+                        
+                        # Add dummy traces so the vertical lines register appropriately in the side legend
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
+                        
+                        # Render Chart
+                        st.plotly_chart(fix_chart(fig_10), use_container_width=True)
+                    else:
+                        st.warning("No data found for the selected Applicant and Year(s).")
+                    
+            with tabs[11]:
                 st.markdown("### IPC Growth Histogram (Filing Date)")
                 u_ipc_list = sorted(df_exp_f['IPC_Class3'].unique())
                 a_yrs_hist = sorted(df_exp_f['Year'].unique())
