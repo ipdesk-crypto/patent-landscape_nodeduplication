@@ -1039,198 +1039,199 @@ else:
 
                 # --- TAB 10: GROWTH OF APPLICANTS ---
             # --- TAB 6: GROWTH OF APPLICANTS ---
-                with tabs[10]:
-                    st.markdown("### GROWTH OF APPLICANTS/COUNTRY/IPC")
+            # --- TAB 6: GROWTH OF APPLICANTS ---
+            with tabs[6]:
+                st.markdown("### GROWTH OF APPLICANTS/COUNTRY/IPC")
+                
+                # Base copy and date preparation (from Tab 9)
+                df_tab10 = df_f.copy()
+                df_tab10['Earliest Priority Date'] = pd.to_datetime(df_tab10['Earliest Priority Date'], errors='coerce')
+                df_tab10['Year'] = df_tab10['Earliest Priority Date'].dt.year
+                df_tab10['Month_Name'] = df_tab10['Earliest Priority Date'].dt.month_name()
+                df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
+                
+                # --- NEW ADDITION: PREPARE COUNTRY AND IPC COLUMNS ---
+                # 1. Safely extract first Priority Country (handles if column names slightly differ)
+                pc_col = 'Priority Country' if 'Priority Country' in df_tab10.columns else next((col for col in df_tab10.columns if 'Priority' in col and ('Country' in col or 'Data' in col)), None)
+                if pc_col:
+                    df_tab10['First Priority Country'] = df_tab10[pc_col].astype(str).str.split(',').str[0].str.strip()
+                else:
+                    df_tab10['First Priority Country'] = "Unknown"
+    
+                # 2. Safely extract first 4 characters of IPC
+                ipc_col = 'IPC' if 'IPC' in df_tab10.columns else next((col for col in df_tab10.columns if 'IPC' in col or 'International Patent Classification' in col), None)
+                if ipc_col:
+                    df_tab10['IPC_4'] = df_tab10[ipc_col].astype(str).str[:4]
+                else:
+                    df_tab10['IPC_4'] = "Unknown"
+                
+                # --- NEW ADDITION: DEFINING THE BINS FROM THE PDF ---
+                # Note: The keywords are matched without punctuation to work flawlessly with your aggressive cleaner below.
+                bins_dict = {
+                    "Bin #1: Oil Companies in UAE": ["ABU DHABI NATIONAL OIL", "ADNOC", "TAKREER", "BAKER HUGHES", "BHARAT PETROLEUM", "BP", "CHEVRON", "ENI", "EXXONMOBIL", "HALLIBURTON", "HINDUSTAN PETROLEUM", "IFP ENERGIES", "INDIAN OIL", "INSTITUT FRANCAIS", "MI LLC", "NATIONAL OILWELL VARCO", "PETROCHINA", "PETRONAS", "PETROLIAM NASIONAL", "SAUDI ARABIAN OIL", "SAUDI ARAMCO", "SCHLUMBERGER", "SHELL", "STATOIL", "TOTALENERGIES", "TOTAL ENERGIES", "TOTAL SA", "VALLOUREC", "WEATHERFORD", "WELLTEC"],
+                    "Bin #2: Fintech": ["MASTERCARD", "SAMSUNG PAY", "AEP TICKETING", "SECURRENCY", "TRADING TECHNOLOGIES", "SHINHAN CARD", "COMPOSECURE"],
+                    "Bin #3: Food and Beverage": ["NESTEC", "NESTLE", "PEPSICO", "ARLA FOODS", "UNILEVER", "SUNTORY", "NISSIN FOODS", "MUSHLABS", "AVANT MEATS", "QBO COFFEE", "K FEE", "INLEIT", "SAHYADRI FARMS", "FUTURE MEAT", "MELITTA"],
+                    "Bin #4: Blockchain": ["NCHAIN", "BITMAIN", "GCRYPT", "DIGITAL CURRENCY INSTITUTE"],
+                    "Bin #5: Entertainment": ["UNIVERSAL CITY STUDIOS", "SPHERE ENTERTAINMENT", "BUNGIE", "TATA PLAY", "PCCW VUCLIP", "HOME RUN DUGOUT", "KELLY SLATER WAVE", "DOLBY"],
+                    "Bin #6: Pharmaceuticals & Healthcare": ["NOVARTIS", "ASTRAZENECA", "PFIZER", "JOHNSON JOHNSON", "JANSSEN", "SANOFI", "GLAXOSMITHKLINE", "MERCK SHARP", "ELI LILLY", "BOEHRINGER INGELHEIM", "AMGEN", "BAYER", "GILEAD", "BRISTOL MYERS SQUIBB", "BIOGEN", "REGENERON", "GULF PHARMACEUTICAL", "JULFAR"],
+                    "Bin #7: Industrial, Energy & Engineering": ["HALLIBURTON", "SCHLUMBERGER", "BAKER HUGHES", "SHELL", "TOTAL ENERGIES", "SIEMENS", "GENERAL ELECTRIC", "ABU DHABI NATIONAL OIL", "ADNOC", "SAUDI ARABIAN OIL", "ARAMCO", "HONEYWELL", "LINDE", "DUBAI ELECTRICITY", "DEWA", "THYSSENKRUPP", "ALSTOM"],
+                    "Bin #8: Technology, Communications & Research": ["QUALCOMM", "INTEL", "SAMSUNG ELECTRONICS", "HUAWEI", "ERICSSON", "TELEFONAKTIEBOLAGET", "LG ELECTRONICS", "APPLE", "KHALIFA UNIVERSITY", "TECHNOLOGY INNOVATION INSTITUTE", "TII", "UNITED ARAB EMIRATES UNIVERSITY", "NEW YORK UNIVERSITY", "MASSACHUSETTS INSTITUTE OF TECHNOLOGY", "MIT"]
+                }
+    
+                # --- AGGRESSIVE APPLICANT CLEANING TO GROUP SAME COMPANIES ---
+                import difflib # Imported to dynamically calculate string similarity for typos across ALL companies
+                
+                # 1. Uppercase everything so letters match exactly
+                cleaned_names = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
+                
+                # 2. Remove ALL punctuation (periods, commas, hyphens, slashes, etc.)
+                cleaned_names = cleaned_names.str.replace(r'[^\w\s]', '', regex=True)
+                
+                # 3. Remove common corporate suffixes
+                cleaned_names = cleaned_names.str.replace(r'\b(INC|LLC|LTD|CORP|CORPORATION|CO|COMPANY|LIMITED|GMBH|SA|NV|PLC|BV)\b', '', regex=True)
+                
+                # 4. Collapse extra spaces into a single space and trim edges
+                cleaned_names = cleaned_names.str.replace(r'\s+', ' ', regex=True).str.strip()
+                
+                # --- 5. DYNAMIC ALIAS MAPPING FOR ALL COMPANIES ---
+                # Get unique cleaned names, removing empty strings
+                unique_clean_names = cleaned_names[cleaned_names != ''].dropna().unique()
+                
+                # Sort by length (shortest first) so the core base name becomes the standard (e.g., "HALLIBURTON" before "HALLIBURTON ENERGY")
+                unique_clean_names = sorted(unique_clean_names, key=len)
+                
+                name_mapping = {}
+                standard_names = []
+                
+                for name in unique_clean_names:
+                    match_found = False
+                    for std in standard_names:
+                        # Condition A: High text similarity (catches typos like MATTSCHAPPIJ vs MAATSCHAPPIJ)
+                        similarity = difflib.SequenceMatcher(None, std, name).ratio()
+                        
+                        # Condition B: Base name is included in the longer name (catches extra departments/partners like "... BREMBANA")
+                        # We ensure the standard name is at least 8 characters so tiny words don't accidentally swallow unrelated companies.
+                        is_prefix = len(std) >= 8 and name.startswith(std)
+                        
+                        if similarity > 0.85 or is_prefix:
+                            name_mapping[name] = std
+                            match_found = True
+                            break
                     
-                    # Base copy and date preparation (from Tab 9)
-                    df_tab10 = df_f.copy()
-                    df_tab10['Earliest Priority Date'] = pd.to_datetime(df_tab10['Earliest Priority Date'], errors='coerce')
-                    df_tab10['Year'] = df_tab10['Earliest Priority Date'].dt.year
-                    df_tab10['Month_Name'] = df_tab10['Earliest Priority Date'].dt.month_name()
-                    df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
+                    if not match_found:
+                        standard_names.append(name)
+                        name_mapping[name] = name
+                
+                # Apply the dynamic mapping to the dataframe
+                df_tab10['Cleaned Applicant'] = cleaned_names.map(name_mapping)
+                
+                # Create dropdown list from the automatically grouped names
+                all_apps = sorted(df_tab10[df_tab10['Cleaned Applicant'].notna() & (df_tab10['Cleaned Applicant'] != '')]['Cleaned Applicant'].unique())
+                
+                # REPORT BOX TOP
+                c18, c30 = get_cutoff_dates()
+                st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
+                            Type 4 & 5 Cutoff: <b>{c18.strftime('%d %B %Y')}</b> | Type 1 Cutoff: <b>{c30.strftime('%d %B %Y')}</b></div>""", unsafe_allow_html=True)
+                
+                available_years_10 = sorted(df_tab10['Year'].dropna().unique(), reverse=True)
+                
+                # --- NEW ADDITION: VIEW MODE SELECTOR ---
+                st.markdown("##### Filter Options")
+                view_mode = st.radio("Select View Mode:", ["By Applicant", "By Priority Country", "By IPC Class", "By Bin"], horizontal=True)
+    
+                # UI Controls: Single Select based on View Mode + Multi Year Select
+                c1_10, c2_10 = st.columns([1,1])
+                with c1_10:
+                    if view_mode == "By Applicant":
+                        selected_item = st.selectbox("Select One Applicant:", all_apps, key="tab10_app_selector")
+                    elif view_mode == "By Priority Country":
+                        all_countries = sorted(df_tab10[(df_tab10['First Priority Country'] != 'nan') & (df_tab10['First Priority Country'] != '')]['First Priority Country'].unique())
+                        selected_item = st.selectbox("Select One Priority Country:", all_countries, key="tab10_country_selector")
+                    elif view_mode == "By IPC Class":
+                        all_ipcs = sorted(df_tab10[(df_tab10['IPC_4'] != 'nan') & (df_tab10['IPC_4'] != '')]['IPC_4'].unique())
+                        selected_item = st.selectbox("Select One IPC Class:", all_ipcs, key="tab10_ipc_selector")
+                    elif view_mode == "By Bin":
+                        selected_item = st.selectbox("Select One Bin:", list(bins_dict.keys()), key="tab10_bin_selector")
                     
-                    # --- NEW ADDITION: PREPARE COUNTRY AND IPC COLUMNS ---
-                    # 1. Safely extract first Priority Country (handles if column names slightly differ)
-                    pc_col = 'Priority Country' if 'Priority Country' in df_tab10.columns else next((col for col in df_tab10.columns if 'Priority' in col and ('Country' in col or 'Data' in col)), None)
-                    if pc_col:
-                        df_tab10['First Priority Country'] = df_tab10[pc_col].astype(str).str.split(',').str[0].str.strip()
+                with c2_10:
+                    # Multiselect allowing multiple years, defaulting to the most recent year
+                    default_yr_10 = [available_years_10[0]] if available_years_10 else []
+                    sel_yr_10 = st.multiselect("Choose Year(s):", available_years_10, default=default_yr_10, key="tab10_yr_selector")
+    
+                if selected_item and sel_yr_10:
+                    # --- NEW ADDITION: DYNAMIC FILTERING LOGIC ---
+                    if view_mode == "By Applicant":
+                        data_mask = df_tab10['Cleaned Applicant'] == selected_item
+                        chart_title = f"Monthly Application Growth: {selected_item}"
+                    elif view_mode == "By Priority Country":
+                        data_mask = df_tab10['First Priority Country'] == selected_item
+                        chart_title = f"Monthly Application Growth (Country): {selected_item}"
+                    elif view_mode == "By IPC Class":
+                        data_mask = df_tab10['IPC_4'] == selected_item
+                        chart_title = f"Monthly Application Growth (IPC): {selected_item}"
+                    elif view_mode == "By Bin":
+                        # Uses regex to check if ANY of the bin keywords exist within the aggressively cleaned applicant name
+                        import re
+                        keywords = bins_dict[selected_item]
+                        pattern = r'\b(' + '|'.join([re.escape(k) for k in keywords]) + r')\b'
+                        data_mask = df_tab10['Cleaned Applicant'].str.contains(pattern, case=False, na=False, regex=True)
+                        chart_title = f"Monthly Application Growth: {selected_item}"
+    
+                    year_mask = df_tab10['Year'].isin(sel_yr_10)
+                    
+                    filtered_tab10 = df_tab10[data_mask & year_mask]
+                    
+                    # --- DE-DUPLICATION ADDED HERE ---
+                    # Ensure each application is counted only once based on 'Application Number'
+                    filtered_tab10 = filtered_tab10.drop_duplicates(subset=['Application Number'])
+                    
+                    if not filtered_tab10.empty:
+                        # Generate x-axis order dynamically for all selected years to expand columns
+                        base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
+                        m_order_10 = []
+                        for y in sorted(sel_yr_10): # Sorts ascending so older years are on the left
+                            for m in base_months:
+                                m_order_10.append(f"{m} {int(y)}")
+                        
+                        # Group by Month_Year and Application Type (ID)
+                        counts_10 = filtered_tab10.groupby(['Month_Year', 'Application Type (ID)']).size().reset_index(name='Apps')
+                        counts_10['Application Type (ID)'] = counts_10['Application Type (ID)'].astype(str)
+                        
+                        # Rebuild chart with stacking, counting, and proper ordering
+                        fig_10 = px.bar(
+                            counts_10, 
+                            x='Month_Year', 
+                            y='Apps', 
+                            color='Application Type (ID)', # Interactive legend per application type
+                            text='Apps',                   # Count inside block
+                            height=600,
+                            title=chart_title,             # Dynamic Chart Title
+                            category_orders={
+                                "Month_Year": m_order_10,
+                                "Application Type (ID)": ["5", "4", "3", "2", "1"] # Renders 5 at the bottom, building upwards
+                            }
+                        )
+                        
+                        # Enforce the stack look and position the internal text safely
+                        fig_10.update_traces(textposition='inside')
+                        fig_10.update_layout(barmode='stack')
+                        
+                        # Extract the Month Year from the present dynamic cutoff dates
+                        c18_month_year = c18.strftime('%B %Y')
+                        c30_month_year = c30.strftime('%B %Y')
+                        
+                        # Add vertical cutoff lines based on the calculated current Month Year
+                        fig_10.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
+                        fig_10.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
+                        
+                        # Add dummy traces so the vertical lines register appropriately in the side legend
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
+                        fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
+                        
+                        # Render Chart
+                        st.plotly_chart(fix_chart(fig_10), use_container_width=True)
                     else:
-                        df_tab10['First Priority Country'] = "Unknown"
-        
-                    # 2. Safely extract first 4 characters of IPC
-                    ipc_col = 'IPC' if 'IPC' in df_tab10.columns else next((col for col in df_tab10.columns if 'IPC' in col or 'International Patent Classification' in col), None)
-                    if ipc_col:
-                        df_tab10['IPC_4'] = df_tab10[ipc_col].astype(str).str[:4]
-                    else:
-                        df_tab10['IPC_4'] = "Unknown"
-                    
-                    # --- NEW ADDITION: DEFINING THE BINS FROM THE PDF ---
-                    # Note: The keywords are matched without punctuation to work flawlessly with your aggressive cleaner below.
-                    bins_dict = {
-                        "Bin #1: Oil Companies in UAE": ["ABU DHABI NATIONAL OIL", "ADNOC", "TAKREER", "BAKER HUGHES", "BHARAT PETROLEUM", "BP", "CHEVRON", "ENI", "EXXONMOBIL", "HALLIBURTON", "HINDUSTAN PETROLEUM", "IFP ENERGIES", "INDIAN OIL", "INSTITUT FRANCAIS", "MI LLC", "NATIONAL OILWELL VARCO", "PETROCHINA", "PETRONAS", "PETROLIAM NASIONAL", "SAUDI ARABIAN OIL", "SAUDI ARAMCO", "SCHLUMBERGER", "SHELL", "STATOIL", "TOTALENERGIES", "TOTAL ENERGIES", "TOTAL SA", "VALLOUREC", "WEATHERFORD", "WELLTEC"],
-                        "Bin #2: Fintech": ["MASTERCARD", "SAMSUNG PAY", "AEP TICKETING", "SECURRENCY", "TRADING TECHNOLOGIES", "SHINHAN CARD", "COMPOSECURE"],
-                        "Bin #3: Food and Beverage": ["NESTEC", "NESTLE", "PEPSICO", "ARLA FOODS", "UNILEVER", "SUNTORY", "NISSIN FOODS", "MUSHLABS", "AVANT MEATS", "QBO COFFEE", "K FEE", "INLEIT", "SAHYADRI FARMS", "FUTURE MEAT", "MELITTA"],
-                        "Bin #4: Blockchain": ["NCHAIN", "BITMAIN", "GCRYPT", "DIGITAL CURRENCY INSTITUTE"],
-                        "Bin #5: Entertainment": ["UNIVERSAL CITY STUDIOS", "SPHERE ENTERTAINMENT", "BUNGIE", "TATA PLAY", "PCCW VUCLIP", "HOME RUN DUGOUT", "KELLY SLATER WAVE", "DOLBY"],
-                        "Bin #6: Pharmaceuticals & Healthcare": ["NOVARTIS", "ASTRAZENECA", "PFIZER", "JOHNSON JOHNSON", "JANSSEN", "SANOFI", "GLAXOSMITHKLINE", "MERCK SHARP", "ELI LILLY", "BOEHRINGER INGELHEIM", "AMGEN", "BAYER", "GILEAD", "BRISTOL MYERS SQUIBB", "BIOGEN", "REGENERON", "GULF PHARMACEUTICAL", "JULFAR"],
-                        "Bin #7: Industrial, Energy & Engineering": ["HALLIBURTON", "SCHLUMBERGER", "BAKER HUGHES", "SHELL", "TOTAL ENERGIES", "SIEMENS", "GENERAL ELECTRIC", "ABU DHABI NATIONAL OIL", "ADNOC", "SAUDI ARABIAN OIL", "ARAMCO", "HONEYWELL", "LINDE", "DUBAI ELECTRICITY", "DEWA", "THYSSENKRUPP", "ALSTOM"],
-                        "Bin #8: Technology, Communications & Research": ["QUALCOMM", "INTEL", "SAMSUNG ELECTRONICS", "HUAWEI", "ERICSSON", "TELEFONAKTIEBOLAGET", "LG ELECTRONICS", "APPLE", "KHALIFA UNIVERSITY", "TECHNOLOGY INNOVATION INSTITUTE", "TII", "UNITED ARAB EMIRATES UNIVERSITY", "NEW YORK UNIVERSITY", "MASSACHUSETTS INSTITUTE OF TECHNOLOGY", "MIT"]
-                    }
-        
-                    # --- AGGRESSIVE APPLICANT CLEANING TO GROUP SAME COMPANIES ---
-                    import difflib # Imported to dynamically calculate string similarity for typos across ALL companies
-                    
-                    # 1. Uppercase everything so letters match exactly
-                    cleaned_names = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
-                    
-                    # 2. Remove ALL punctuation (periods, commas, hyphens, slashes, etc.)
-                    cleaned_names = cleaned_names.str.replace(r'[^\w\s]', '', regex=True)
-                    
-                    # 3. Remove common corporate suffixes
-                    cleaned_names = cleaned_names.str.replace(r'\b(INC|LLC|LTD|CORP|CORPORATION|CO|COMPANY|LIMITED|GMBH|SA|NV|PLC|BV)\b', '', regex=True)
-                    
-                    # 4. Collapse extra spaces into a single space and trim edges
-                    cleaned_names = cleaned_names.str.replace(r'\s+', ' ', regex=True).str.strip()
-                    
-                    # --- 5. DYNAMIC ALIAS MAPPING FOR ALL COMPANIES ---
-                    # Get unique cleaned names, removing empty strings
-                    unique_clean_names = cleaned_names[cleaned_names != ''].dropna().unique()
-                    
-                    # Sort by length (shortest first) so the core base name becomes the standard (e.g., "HALLIBURTON" before "HALLIBURTON ENERGY")
-                    unique_clean_names = sorted(unique_clean_names, key=len)
-                    
-                    name_mapping = {}
-                    standard_names = []
-                    
-                    for name in unique_clean_names:
-                        match_found = False
-                        for std in standard_names:
-                            # Condition A: High text similarity (catches typos like MATTSCHAPPIJ vs MAATSCHAPPIJ)
-                            similarity = difflib.SequenceMatcher(None, std, name).ratio()
-                            
-                            # Condition B: Base name is included in the longer name (catches extra departments/partners like "... BREMBANA")
-                            # We ensure the standard name is at least 8 characters so tiny words don't accidentally swallow unrelated companies.
-                            is_prefix = len(std) >= 8 and name.startswith(std)
-                            
-                            if similarity > 0.85 or is_prefix:
-                                name_mapping[name] = std
-                                match_found = True
-                                break
-                        
-                        if not match_found:
-                            standard_names.append(name)
-                            name_mapping[name] = name
-                    
-                    # Apply the dynamic mapping to the dataframe
-                    df_tab10['Cleaned Applicant'] = cleaned_names.map(name_mapping)
-                    
-                    # Create dropdown list from the automatically grouped names
-                    all_apps = sorted(df_tab10[df_tab10['Cleaned Applicant'].notna() & (df_tab10['Cleaned Applicant'] != '')]['Cleaned Applicant'].unique())
-                    
-                    # REPORT BOX TOP
-                    c18, c30 = get_cutoff_dates()
-                    st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
-                                Type 4 & 5 Cutoff: <b>{c18.strftime('%d %B %Y')}</b> | Type 1 Cutoff: <b>{c30.strftime('%d %B %Y')}</b></div>""", unsafe_allow_html=True)
-                    
-                    available_years_10 = sorted(df_tab10['Year'].dropna().unique(), reverse=True)
-                    
-                    # --- NEW ADDITION: VIEW MODE SELECTOR ---
-                    st.markdown("##### Filter Options")
-                    view_mode = st.radio("Select View Mode:", ["By Applicant", "By Priority Country", "By IPC Class", "By Bin"], horizontal=True)
-        
-                    # UI Controls: Single Select based on View Mode + Multi Year Select
-                    c1_10, c2_10 = st.columns([1,1])
-                    with c1_10:
-                        if view_mode == "By Applicant":
-                            selected_item = st.selectbox("Select One Applicant:", all_apps, key="tab10_app_selector")
-                        elif view_mode == "By Priority Country":
-                            all_countries = sorted(df_tab10[(df_tab10['First Priority Country'] != 'nan') & (df_tab10['First Priority Country'] != '')]['First Priority Country'].unique())
-                            selected_item = st.selectbox("Select One Priority Country:", all_countries, key="tab10_country_selector")
-                        elif view_mode == "By IPC Class":
-                            all_ipcs = sorted(df_tab10[(df_tab10['IPC_4'] != 'nan') & (df_tab10['IPC_4'] != '')]['IPC_4'].unique())
-                            selected_item = st.selectbox("Select One IPC Class:", all_ipcs, key="tab10_ipc_selector")
-                        elif view_mode == "By Bin":
-                            selected_item = st.selectbox("Select One Bin:", list(bins_dict.keys()), key="tab10_bin_selector")
-                        
-                    with c2_10:
-                        # Multiselect allowing multiple years, defaulting to the most recent year
-                        default_yr_10 = [available_years_10[0]] if available_years_10 else []
-                        sel_yr_10 = st.multiselect("Choose Year(s):", available_years_10, default=default_yr_10, key="tab10_yr_selector")
-        
-                    if selected_item and sel_yr_10:
-                        # --- NEW ADDITION: DYNAMIC FILTERING LOGIC ---
-                        if view_mode == "By Applicant":
-                            data_mask = df_tab10['Cleaned Applicant'] == selected_item
-                            chart_title = f"Monthly Application Growth: {selected_item}"
-                        elif view_mode == "By Priority Country":
-                            data_mask = df_tab10['First Priority Country'] == selected_item
-                            chart_title = f"Monthly Application Growth (Country): {selected_item}"
-                        elif view_mode == "By IPC Class":
-                            data_mask = df_tab10['IPC_4'] == selected_item
-                            chart_title = f"Monthly Application Growth (IPC): {selected_item}"
-                        elif view_mode == "By Bin":
-                            # Uses regex to check if ANY of the bin keywords exist within the aggressively cleaned applicant name
-                            import re
-                            keywords = bins_dict[selected_item]
-                            pattern = r'\b(' + '|'.join([re.escape(k) for k in keywords]) + r')\b'
-                            data_mask = df_tab10['Cleaned Applicant'].str.contains(pattern, case=False, na=False, regex=True)
-                            chart_title = f"Monthly Application Growth: {selected_item}"
-        
-                        year_mask = df_tab10['Year'].isin(sel_yr_10)
-                        
-                        filtered_tab10 = df_tab10[data_mask & year_mask]
-                        
-                        # --- DE-DUPLICATION ADDED HERE ---
-                        # Ensure each application is counted only once based on 'Application Number'
-                        filtered_tab10 = filtered_tab10.drop_duplicates(subset=['Application Number'])
-                        
-                        if not filtered_tab10.empty:
-                            # Generate x-axis order dynamically for all selected years to expand columns
-                            base_months = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"]
-                            m_order_10 = []
-                            for y in sorted(sel_yr_10): # Sorts ascending so older years are on the left
-                                for m in base_months:
-                                    m_order_10.append(f"{m} {int(y)}")
-                            
-                            # Group by Month_Year and Application Type (ID)
-                            counts_10 = filtered_tab10.groupby(['Month_Year', 'Application Type (ID)']).size().reset_index(name='Apps')
-                            counts_10['Application Type (ID)'] = counts_10['Application Type (ID)'].astype(str)
-                            
-                            # Rebuild chart with stacking, counting, and proper ordering
-                            fig_10 = px.bar(
-                                counts_10, 
-                                x='Month_Year', 
-                                y='Apps', 
-                                color='Application Type (ID)', # Interactive legend per application type
-                                text='Apps',                   # Count inside block
-                                height=600,
-                                title=chart_title,             # Dynamic Chart Title
-                                category_orders={
-                                    "Month_Year": m_order_10,
-                                    "Application Type (ID)": ["5", "4", "3", "2", "1"] # Renders 5 at the bottom, building upwards
-                                }
-                            )
-                            
-                            # Enforce the stack look and position the internal text safely
-                            fig_10.update_traces(textposition='inside')
-                            fig_10.update_layout(barmode='stack')
-                            
-                            # Extract the Month Year from the present dynamic cutoff dates
-                            c18_month_year = c18.strftime('%B %Y')
-                            c30_month_year = c30.strftime('%B %Y')
-                            
-                            # Add vertical cutoff lines based on the calculated current Month Year
-                            fig_10.add_vline(x=c18_month_year, line_width=2, line_dash="dash", line_color="red")
-                            fig_10.add_vline(x=c30_month_year, line_width=2, line_dash="dash", line_color="blue")
-                            
-                            # Add dummy traces so the vertical lines register appropriately in the side legend
-                            fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='red', width=2, dash='dash'), name='18M Cutoff')
-                            fig_10.add_scatter(x=[None], y=[None], mode='lines', line=dict(color='blue', width=2, dash='dash'), name='30M Cutoff')
-                            
-                            # Render Chart
-                            st.plotly_chart(fix_chart(fig_10), use_container_width=True)
-                        else:
-                            st.warning("No data found for the selected option and Year(s).")
+                        st.warning("No data found for the selected option and Year(s).")
                     
             with tabs[11]:
                 st.markdown("### IPC Growth Histogram (Filing Date)")
