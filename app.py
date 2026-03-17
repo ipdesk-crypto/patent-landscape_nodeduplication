@@ -1041,7 +1041,8 @@ else:
             # --- TAB 6: GROWTH OF APPLICANTS ---
             # --- TAB 6: GROWTH OF APPLICANTS ---
             # --- TAB 6: GROWTH OF APPLICANTS ---
-            with tabs[10]:
+            # --- TAB 6: GROWTH OF APPLICANTS ---
+            with tabs[6]:
                 st.markdown("### GROWTH OF APPLICANTS/COUNTRY/IPC")
                 
                 # Base copy and date preparation (from Tab 9)
@@ -1052,14 +1053,12 @@ else:
                 df_tab10['Month_Year'] = df_tab10['Earliest Priority Date'].dt.strftime('%B %Y')
                 
                 # --- PREPARE COUNTRY AND IPC COLUMNS ---
-                # 1. Safely extract first Priority Country (Grabs the first 2 letters of the first item)
                 pc_col = 'Priority Country' if 'Priority Country' in df_tab10.columns else next((col for col in df_tab10.columns if 'Priority' in col and ('Country' in col or 'Data' in col)), None)
                 if pc_col:
                     df_tab10['First Priority Country'] = df_tab10[pc_col].astype(str).str.split(',').str[0].str.strip().str[:2].str.upper()
                 else:
                     df_tab10['First Priority Country'] = "Unknown"
     
-                # 2. Safely extract first 4 characters of IPC (Grabs the first 4 letters of the first item)
                 ipc_col = 'IPC' if 'IPC' in df_tab10.columns else next((col for col in df_tab10.columns if 'IPC' in col or 'International Patent Classification' in col), None)
                 if ipc_col:
                     df_tab10['IPC_4'] = df_tab10[ipc_col].astype(str).str.split(',').str[0].str.strip().str[:4].str.upper()
@@ -1079,8 +1078,6 @@ else:
                 }
     
                 # --- AGGRESSIVE APPLICANT CLEANING TO GROUP SAME COMPANIES ---
-                import difflib
-                
                 cleaned_names = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
                 cleaned_names = cleaned_names.str.replace(r'[^\w\s]', '', regex=True)
                 cleaned_names = cleaned_names.str.replace(r'\b(INC|LLC|LTD|CORP|CORPORATION|CO|COMPANY|LIMITED|GMBH|SA|NV|PLC|BV)\b', '', regex=True)
@@ -1089,23 +1086,30 @@ else:
                 unique_clean_names = cleaned_names[cleaned_names != ''].dropna().unique()
                 unique_clean_names = sorted(unique_clean_names, key=len)
                 
-                name_mapping = {}
-                standard_names = []
-                
-                for name in unique_clean_names:
-                    match_found = False
-                    for std in standard_names:
-                        similarity = difflib.SequenceMatcher(None, std, name).ratio()
-                        is_prefix = len(std) >= 8 and name.startswith(std)
+                # CACHE FIX IMPLEMENTED HERE: We wrap your exact logic in a cache so it doesn't freeze Streamlit
+                @st.cache_data
+                def get_cached_applicant_mapping(unique_names_tuple):
+                    import difflib
+                    mapping = {}
+                    standard_names_list = []
+                    for name in unique_names_tuple:
+                        match_found = False
+                        for std in standard_names_list:
+                            similarity = difflib.SequenceMatcher(None, std, name).ratio()
+                            is_prefix = len(std) >= 8 and name.startswith(std)
+                            
+                            if similarity > 0.85 or is_prefix:
+                                mapping[name] = std
+                                match_found = True
+                                break
                         
-                        if similarity > 0.85 or is_prefix:
-                            name_mapping[name] = std
-                            match_found = True
-                            break
-                    
-                    if not match_found:
-                        standard_names.append(name)
-                        name_mapping[name] = name
+                        if not match_found:
+                            standard_names_list.append(name)
+                            mapping[name] = name
+                    return mapping
+    
+                # Convert to tuple so Streamlit can cache it, then run the cached function
+                name_mapping = get_cached_applicant_mapping(tuple(unique_clean_names))
                 
                 df_tab10['Cleaned Applicant'] = cleaned_names.map(name_mapping)
                 all_apps = sorted(df_tab10[df_tab10['Cleaned Applicant'].notna() & (df_tab10['Cleaned Applicant'] != '')]['Cleaned Applicant'].unique())
@@ -1152,12 +1156,9 @@ else:
                     elif view_mode == "By Bin":
                         import re
                         keywords = bins_dict[selected_item]
-                        # We use a direct substring regex match to bypass the boundary issues
                         pattern = r'(' + '|'.join([re.escape(k) for k in keywords]) + r')'
                         
-                        # FIX: We search the ORIGINAL un-shortened string instead of the aggressively cleaned column!
                         raw_applicant_upper = df_tab10['Data of Applicant - Legal Name in English'].astype(str).str.upper()
-                        # Strip punctuation from the raw string so it safely matches our clean keywords
                         raw_no_punct = raw_applicant_upper.str.replace(r'[^\w\s]', '', regex=True)
                         
                         data_mask = raw_no_punct.str.contains(pattern, case=False, na=False, regex=True)
