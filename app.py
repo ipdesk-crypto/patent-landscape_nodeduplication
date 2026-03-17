@@ -1040,7 +1040,7 @@ else:
                 # --- TAB 10: GROWTH OF APPLICANTS ---
             # --- TAB 6: GROWTH OF APPLICANTS ---
             # --- TAB 6: GROWTH OF APPLICANTS ---
-            with tabs[6]:
+            with tabs[10]:
                 st.markdown("### GROWTH OF APPLICANTS/COUNTRY/IPC")
                 
                 # Base copy and date preparation (from Tab 9)
