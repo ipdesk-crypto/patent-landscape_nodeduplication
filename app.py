@@ -627,7 +627,7 @@ else:
                 else: st.warning("No data found for Priority Dates.")
 
            # --- TAB 3: FIRM INTELLIGENCE ---
-             elif active_tab == "Firm Intelligence":
+            elif active_tab == "Firm Intelligence" :
                 # REPORT BOX TOP
                 c18, c30 = get_cutoff_dates()
                 st.markdown(f"""<div class="report-box"><h4 style="color:#F59E0B;">📋 PUBLICATION LAG REPORT</h4>
