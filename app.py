@@ -625,7 +625,7 @@ else:
 
                 else: st.warning("No data found for Priority Dates.")
 
-            # --- TAB 3: FIRM INTELLIGENCE ---
+           # --- TAB 3: FIRM INTELLIGENCE ---
             with tabs[2]:
                 # REPORT BOX TOP
                 c18, c30 = get_cutoff_dates()
@@ -671,7 +671,6 @@ else:
                         
                         firm_growth = firm_sub.groupby(['Year', 'Firm']).size().reset_index(name='Apps')
                         
-
                         # NEW: YEARLY SUMMARY OF TABLE FOR FIRM INTELLIGENCE
                         st.subheader("Firm Annual Summary Table")
                         firm_summary_pivot = firm_growth.pivot(index='Firm', columns='Year', values='Apps').fillna(0).astype(int)
@@ -730,7 +729,6 @@ else:
                         
                         app_growth = app_sub.groupby(['Year', 'Data of Applicant - Legal Name in English']).size().reset_index(name='Apps')
                         
-
                         # APPLICANT SUMMARY TABLE
                         st.subheader("Applicant Annual Summary Table")
                         app_summary_pivot = app_growth.pivot(index='Data of Applicant - Legal Name in English', columns='Year', values='Apps').fillna(0).astype(int)
