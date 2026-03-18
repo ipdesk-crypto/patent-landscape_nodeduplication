@@ -671,18 +671,6 @@ else:
                         
                         firm_growth = firm_sub.groupby(['Year', 'Firm']).size().reset_index(name='Apps')
                         
-                        # Only show chart if we haven't selected ALL firms (too messy), or limit to top 20
-                        if sel_all_firms:
-                            st.warning("Displaying Top 20 Firms in Chart for clarity (All included in tables).")
-                            top_20 = firm_sub['Firm'].value_counts().nlargest(20).index.tolist()
-                            fig_data = firm_growth[firm_growth['Firm'].isin(top_20)]
-                        else:
-                            fig_data = firm_growth
-
-                        fig = px.line(fig_data, x='Year', y='Apps', color='Firm', markers=True, height=800, title="Firm Filing Intelligence (Expanded View - Filing Date)")
-                        fig = add_cutoff_lines_numeric_axis(fig, c18, c30)
-                        fig = apply_year_axis_formatting(fig)
-                        st.plotly_chart(fix_chart(fig), use_container_width=True)
 
                         # NEW: YEARLY SUMMARY OF TABLE FOR FIRM INTELLIGENCE
                         st.subheader("Firm Annual Summary Table")
@@ -742,18 +730,6 @@ else:
                         
                         app_growth = app_sub.groupby(['Year', 'Data of Applicant - Legal Name in English']).size().reset_index(name='Apps')
                         
-                        # Only show chart if we haven't selected ALL (too messy), or limit to top 20
-                        if sel_all_apps:
-                            st.warning("Displaying Top 20 Applicants in Chart for clarity (All included in tables).")
-                            top_20_a = app_sub['Data of Applicant - Legal Name in English'].value_counts().nlargest(20).index.tolist()
-                            fig_data_a = app_growth[app_growth['Data of Applicant - Legal Name in English'].isin(top_20_a)]
-                        else:
-                            fig_data_a = app_growth
-
-                        fig_app = px.line(fig_data_a, x='Year', y='Apps', color='Data of Applicant - Legal Name in English', markers=True, height=800, title="Applicant Filing Intelligence (Expanded View - Filing Date)")
-                        fig_app = add_cutoff_lines_numeric_axis(fig_app, c18, c30)
-                        fig_app = apply_year_axis_formatting(fig_app)
-                        st.plotly_chart(fix_chart(fig_app), use_container_width=True)
 
                         # APPLICANT SUMMARY TABLE
                         st.subheader("Applicant Annual Summary Table")
