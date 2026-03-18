@@ -797,7 +797,7 @@ else:
 
 
 
-               elif active_tab == "Monthly Filing" :
+            elif active_tab == "Monthly Filing" :
                     # 1. Base counting on 'Earliest Priority Date' without permanently altering other tabs
                     df_tab9 = df_f.copy()
                     df_tab9['Earliest Priority Date'] = pd.to_datetime(df_tab9['Earliest Priority Date'], errors='coerce')
